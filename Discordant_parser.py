@@ -2,6 +2,7 @@ import pandas as pd
 import pysam
 import argparse
 import logging
+import logging.config
 import os
 import time
 import numpy as np
@@ -9,23 +10,20 @@ import numpy as np
 start_time = time.time()
 
 logger=logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-formatter= logging.Formatter('%(asctime)s:%(levelname)s:%(message)s')
-file_handler= logging.FileHandler('BamDiscordantParser.log')
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
+logging.basicConfig(filename='run.log', filemode='w', level=logging.DEBUG)
 
 def main():
     usr_input=parse_args()
-    
-    discordant_reads=extract_discordant_reads(usr_input.sorted_bam_file)
-    analysis=analyse_discordant_reads(discordant_reads,usr_input.outdir)
+    try:
+        discordant_reads=extract_discordant_reads(usr_input.sorted_bam_file,usr_input.outdir)
+        analysis=analyse_discordant_reads(discordant_reads)
         
-    write_output=writeout(discordant_reads, analysis[0], analysis[1], analysis[2], usr_input.outdir) 
+        write_output=writeout(discordant_reads, analysis[0], analysis[1], analysis[2], usr_input.outdir) 
 
-    #except:
-        #print("Something wrong. Please check the log file for more information")
-
+    except Exception as e:
+        print("Something wrong! Please check log file")
+        logger.exception("Unexpected exception! %s",e)
+        
 
 def parse_args():
     
@@ -39,12 +37,15 @@ def parse_args():
     
     return(args)
 
-def extract_discordant_reads(BAM_file):
+def extract_discordant_reads(BAM_file, outdir):
+
+    #Generate the output folder for storing results
+    os.mkdir(os.path.join(outdir)+os.path.dirname(outdir))
 
     #Read the bam file using Pysam
     bamfile= pysam.AlignmentFile(BAM_file, "rb")
 
-    logger.debug('Bam file read successfully')
+    print('Bam file read successfully')
 
     #Generate lists to store essential values
     query_name=[]
@@ -83,12 +84,13 @@ def extract_discordant_reads(BAM_file):
     #Sort the reads
     bam_df=bam_df.sort_values('query_name', ignore_index=True)
 
-    logger.debug('Discordant reads formatted as dataframe')
+    print('Discordant reads formatted as dataframe')
 
     return(bam_df)
 
-def analyse_discordant_reads(bam_df, outdir):
+def analyse_discordant_reads(bam_df):
 
+    print('Analysing discordant reads now')
     #Find the reads which have a mate pair and store them as a list
     duplicated_reads=bam_df[bam_df.duplicated(subset=['query_name'],
                                              keep=False)]
@@ -157,14 +159,13 @@ def analyse_discordant_reads(bam_df, outdir):
 
     #Make a dataframe for single reads
     singles_df = pd.DataFrame(singles)
-
-    #Generate the output folder for storing results
-    os.mkdir(os.path.join(outdir)+os.path.dirname(outdir))
     
     return(same_chr_df, diff_chr_df, singles_df)
 
 
 def writeout(bam_df, same_df, diff_df, singles_df, out_folder):
+
+    print('Writing output files')
 
     #Write all Discordant read information
     bam_df.to_csv(f"{os.path.join(out_folder)}/All_discordant.txt", sep='\t', index=False)
@@ -179,7 +180,7 @@ def writeout(bam_df, same_df, diff_df, singles_df, out_folder):
     if len(singles_df)>0:
         singles_df.to_csv(f"{os.path.join(out_folder)}/Single_reads.txt", sep='\t', index=False)
 
-    print(time.time()-start_time)
+    logger.debug('Total time for the entire process in seconds is %s' %(time.time()-start_time))
 
 
 if __name__=='__main__':
