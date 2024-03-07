@@ -1,0 +1,1 @@
+Program to extract discordant bam reads, analyse if they fall on same/different chromosomes and provide output in a tabular format
